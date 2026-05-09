@@ -15,6 +15,10 @@
 #
 # Tag format: YYYY.M.D (Asia/Shanghai calendar day, no per-day build index).
 #
+# Multi-arch: buildx pushes a manifest list (linux/amd64 + linux/arm64). Requires
+# privileged dind. BINFMT_IMAGE defaults to Docker Hub; mirror to ACR and set
+# BINFMT_IMAGE in CI variables if pulls time out.
+#
 # Project setting: Settings → CI/CD → General pipelines → CI/CD configuration file
 # must be set to this path: .gitlab/ci.yml (GitLab does not auto-detect it).
 
@@ -22,6 +26,10 @@ variables:
   DOCKER_TLS_CERTDIR: "/certs"
   GIT_STRATEGY: clone
   GIT_DEPTH: "0"
+  DOCKER_BUILDKIT: "1"
+  BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+  DOCKER_PLATFORMS: "linux/amd64,linux/arm64"
+  BINFMT_IMAGE: "tonistiigi/binfmt:latest"
 
 stages:
   - build
@@ -51,6 +59,21 @@ docker-build-push:
     - export IMAGE_TAG="$(date +%Y).$(date +%-m).$(date +%-d)"
     - export DOCKER_IMAGE="${ACR_REGISTRY}/opencsghq/picoclaw"
     - echo "IMAGE_TAG=${IMAGE_TAG}" && echo "DOCKER_IMAGE=${DOCKER_IMAGE}"
+    - docker info
+    - docker buildx version
+    # Register QEMU handlers on the daemon host so non-native platforms can RUN in Dockerfile.
+    - docker run --rm --privileged "${BINFMT_IMAGE}" --install all
+    - export BUILDX_BUILDER="picoclaw-mx-${CI_PIPELINE_ID}"
+    - docker buildx rm "${BUILDX_BUILDER}" 2>/dev/null || true
+    - docker buildx create --name "${BUILDX_BUILDER}" --driver docker-container --bootstrap --use
   script:
-    - docker build -f docker/Dockerfile -t "${DOCKER_IMAGE}:${IMAGE_TAG}" .
-    - docker push "${DOCKER_IMAGE}:${IMAGE_TAG}"
+    - |
+      set -euo pipefail
+      docker buildx build \
+        --platform "${DOCKER_PLATFORMS}" \
+        -f docker/Dockerfile \
+        -t "${DOCKER_IMAGE}:${IMAGE_TAG}" \
+        --push \
+        .
+  after_script:
+    - docker buildx rm "picoclaw-mx-${CI_PIPELINE_ID}" 2>/dev/null || true
