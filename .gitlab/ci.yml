@@ -1,7 +1,7 @@
 # GitLab CI: build Docker image and push to Alibaba Cloud ACR.
 # Triggers: branch `add-csgclaw-channel-ci-test` (path `changes` commented out for testing).
 #
-# Runner: GitLab Runner with docker executor. For Docker-in-Docker (this job),
+# Runner: use a GitLab Runner with docker executor. For Docker-in-Docker (this job),
 # set privileged = true in the runner's config.toml ([runners.docker]), not in
 # this file. Optionally add `tags:` to pin a specific runner.
 #
@@ -14,6 +14,9 @@
 #   ACR_PASSWORD – ACR password or temporary token
 #
 # Tag format: YYYY.M.D (Asia/Shanghai calendar day, no per-day build index).
+#
+# Project setting: Settings → CI/CD → General pipelines → CI/CD configuration file
+# must be set to this path: .gitlab/ci.yml (GitLab does not auto-detect it).
 
 variables:
   DOCKER_TLS_CERTDIR: "/certs"
