@@ -50,10 +50,25 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # Stage 2: Minimal runtime image
 # ============================================================
 FROM opencsg-registry.cn-beijing.cr.aliyuncs.com/opencsg_public/alpine:3.23
+ARG TARGETARCH
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 RUN apk add --no-cache ca-certificates curl python3 tini tzdata
+
+# glab (GitLab CLI): install from OpenCSG-hosted APKs (stable in mainland CN; see gitlab-csgclaw/SKILL.md).
+RUN set -eu; \
+  case "${TARGETARCH}" in \
+    arm64) glab_apk_url="https://csgclaw.opencsg.com/apks/glab_1.92.1_linux_arm64.apk" ;; \
+    amd64) glab_apk_url="https://csgclaw.opencsg.com/apks/glab_1.92.1_linux_amd64.apk" ;; \
+    *) echo "glab: unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL "$glab_apk_url" -o /tmp/glab.apk; \
+  apk add --no-cache --allow-untrusted /tmp/glab.apk; \
+  rm -f /tmp/glab.apk; \
+  glab --version
+
+ENV GLAB_TELEMETRY_DISABLED=1
 
 # Health check (use 127.0.0.1: gateway listens on IPv4 only; "localhost" may resolve to ::1 and fail)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
