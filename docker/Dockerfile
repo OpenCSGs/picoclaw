@@ -3,6 +3,10 @@
 #   docker tag golang:1.25-alpine .../opencsg_public/golang:1.25-alpine
 #   docker tag alpine:3.23 .../opencsg_public/alpine:3.23
 #
+# Runtime base must be multi-arch (arm64 + amd64). ACR opencsg_public/alpine:3.23 is amd64-only;
+# default to official alpine:3.23. Override RUNTIME_BASE when arm64 is mirrored to ACR.
+ARG RUNTIME_BASE=alpine:3.23
+
 # ============================================================
 # Stage 1: Build the picoclaw binary
 # ============================================================
@@ -31,7 +35,7 @@ RUN make build
 # ============================================================
 # Stage 1.5: Download platform-specific csgclaw-cli release tarball
 # ============================================================
-FROM opencsg-registry.cn-beijing.cr.aliyuncs.com/opencsg_public/alpine:3.23 AS csgclaw-cli
+FROM ${RUNTIME_BASE} AS csgclaw-cli
 ARG TARGETARCH
 # Override to pin a release, e.g. https://csgclaw.opencsg.com/releases/v1.0.0
 ARG CSGCLAW_CLI_BASE_URL=https://csgclaw.opencsg.com/releases/latest
@@ -49,7 +53,7 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # ============================================================
 # Stage 2: Minimal runtime image
 # ============================================================
-FROM opencsg-registry.cn-beijing.cr.aliyuncs.com/opencsg_public/alpine:3.23
+FROM ${RUNTIME_BASE}
 ARG TARGETARCH
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
