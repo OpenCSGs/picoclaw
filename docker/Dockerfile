@@ -55,18 +55,22 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 # ============================================================
 FROM ${RUNTIME_BASE}
 ARG TARGETARCH
+# Override to pin a release API, e.g. .../releases/v1.92.0
+ARG GLAB_RELEASE_API_URL=https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases/permalink/latest
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 RUN apk add --no-cache ca-certificates curl python3 tini tzdata
 
-# glab (GitLab CLI): install from OpenCSG-hosted APKs (stable in mainland CN; see gitlab-csgclaw/SKILL.md).
+# glab (GitLab CLI): resolve latest release at build time and install the matching APK.
 RUN set -eu; \
   case "${TARGETARCH}" in \
-    arm64) glab_apk_url="https://csgclaw.opencsg.com/apks/glab_1.92.1_linux_arm64.apk" ;; \
-    amd64) glab_apk_url="https://csgclaw.opencsg.com/apks/glab_1.92.1_linux_amd64.apk" ;; \
+    arm64|amd64) ;; \
     *) echo "glab: unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
   esac; \
+  version="$(python3 -c "import json,urllib.request; r=json.load(urllib.request.urlopen('${GLAB_RELEASE_API_URL}')); print(r['tag_name'].lstrip('v'))")"; \
+  enc_ver="$(echo "$version" | sed 's/\./%2E/g')"; \
+  glab_apk_url="https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/packages/generic/glab/${enc_ver}/glab_${version}_linux_${TARGETARCH}.apk"; \
   curl -fsSL "$glab_apk_url" -o /tmp/glab.apk; \
   apk add --no-cache --allow-untrusted /tmp/glab.apk; \
   rm -f /tmp/glab.apk; \
