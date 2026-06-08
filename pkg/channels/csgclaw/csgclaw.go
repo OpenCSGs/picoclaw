@@ -235,7 +235,10 @@ func (c *Channel) openEventStream(ctx context.Context) (*http.Response, error) {
 	}
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
 		defer resp.Body.Close()
-		return nil, fmt.Errorf("csgclaw events endpoint returned non-SSE content type %q", resp.Header.Get("Content-Type"))
+		return nil, fmt.Errorf(
+			"csgclaw events endpoint returned non-SSE content type %q",
+			resp.Header.Get("Content-Type"),
+		)
 	}
 	return resp, nil
 }
@@ -271,7 +274,9 @@ func (c *Channel) runEventLoop() {
 			"events_url": c.eventsURL(),
 		})
 
-		err = c.consumeEvents(resp)
+		err = c.consumeEvents(resp.Body)
+		_ = resp.Body.Close()
+		c.clearEventStream(resp.Body)
 		if c.ctx.Err() != nil {
 			return
 		}
@@ -287,13 +292,8 @@ func (c *Channel) runEventLoop() {
 	}
 }
 
-func (c *Channel) consumeEvents(resp *http.Response) error {
-	defer func() {
-		_ = resp.Body.Close()
-		c.clearEventStream(resp.Body)
-	}()
-
-	reader := bufio.NewReader(resp.Body)
+func (c *Channel) consumeEvents(body io.Reader) error {
+	reader := bufio.NewReader(body)
 	var (
 		eventType string
 		dataLines []string
@@ -302,8 +302,8 @@ func (c *Channel) consumeEvents(resp *http.Response) error {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			if c.ctx.Err() != nil {
-				return nil
+			if ctxErr := c.ctx.Err(); ctxErr != nil {
+				return ctxErr
 			}
 			return err
 		}
@@ -621,7 +621,12 @@ func (c *Channel) participantAPIURL(suffix string) string {
 	baseURL, err := url.Parse(c.config.BaseURL)
 	if err != nil {
 		base := strings.TrimRight(c.config.BaseURL, "/")
-		return fmt.Sprintf("%s/api/v1/channels/csgclaw/participants/%s%s", base, url.PathEscape(c.config.ParticipantID), suffix)
+		return fmt.Sprintf(
+			"%s/api/v1/channels/csgclaw/participants/%s%s",
+			base,
+			url.PathEscape(c.config.ParticipantID),
+			suffix,
+		)
 	}
 
 	pathParts := []string{"api", "v1", "channels", "csgclaw", "participants", c.config.ParticipantID}

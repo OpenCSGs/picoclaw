@@ -42,9 +42,23 @@ func TestChannelReconnectsSSEWithBackoff(t *testing.T) {
 				t.Fatal("response writer does not implement http.Flusher")
 			}
 
-			payload := fmt.Sprintf(`{"message_id":"msg-%d","room_id":"room-1","chat_type":"direct","sender":{"id":"user-1","username":"alice","display_name":"Alice"},"text":"@test-bot hello-%d","timestamp":"2026-03-26T00:00:00Z"}`, attempt, attempt)
+			payload, err := json.Marshal(eventPayload{
+				MessageID: fmt.Sprintf("msg-%d", attempt),
+				RoomID:    "room-1",
+				ChatType:  "direct",
+				Sender: sender{
+					ID:          "user-1",
+					Username:    "alice",
+					DisplayName: "Alice",
+				},
+				Text:      fmt.Sprintf("@test-bot hello-%d", attempt),
+				Timestamp: "2026-03-26T00:00:00Z",
+			})
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
 			_, _ = fmt.Fprintf(w, "event: message\n")
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", string(payload))
 			flusher.Flush()
 		case "/api/v1/channels/csgclaw/participants/test-bot/messages":
 			w.WriteHeader(http.StatusOK)
@@ -103,7 +117,12 @@ func TestHasInboundBotAtMention(t *testing.T) {
 	}{
 		{name: "matching at tag", botID: "manager", content: `<at user_id="manager">manager</at> hello`, ok: true},
 		{name: "other at tag ignored", botID: "manager", content: `<at user_id="alice">alice</at> hello`, ok: false},
-		{name: "later matching at tag works", botID: "manager", content: `<at user_id="alice">alice</at> <at user_id="manager">manager</at> hello`, ok: true},
+		{
+			name:    "later matching at tag works",
+			botID:   "manager",
+			content: `<at user_id="alice">alice</at> <at user_id="manager">manager</at> hello`,
+			ok:      true,
+		},
 		{name: "plain at text ignored", botID: "manager", content: "@manager hello", ok: false},
 		{name: "missing quote ignored", botID: "manager", content: `<at user_id="manager>manager</at>`, ok: false},
 		{name: "empty content ignored", botID: "manager", content: "", ok: false},
@@ -126,9 +145,21 @@ func TestNormalizeInboundAtMentions(t *testing.T) {
 		want    string
 	}{
 		{name: "single mention", content: `<at user_id="manager">manager</at> hi`, want: `@manager hi`},
-		{name: "multiple mentions", content: `<at user_id="alice">alice</at> hi <at user_id="manager">manager</at>`, want: `@alice hi @manager`},
-		{name: "empty mention name keeps original tag", content: `<at user_id="manager"></at> hi`, want: `<at user_id="manager"></at> hi`},
-		{name: "broken tag keeps tail", content: `<at user_id="manager">manager hi`, want: `<at user_id="manager">manager hi`},
+		{
+			name:    "multiple mentions",
+			content: `<at user_id="alice">alice</at> hi <at user_id="manager">manager</at>`,
+			want:    `@alice hi @manager`,
+		},
+		{
+			name:    "empty mention name keeps original tag",
+			content: `<at user_id="manager"></at> hi`,
+			want:    `<at user_id="manager"></at> hi`,
+		},
+		{
+			name:    "broken tag keeps tail",
+			content: `<at user_id="manager">manager hi`,
+			want:    `<at user_id="manager">manager hi`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -142,21 +173,8 @@ func TestNormalizeInboundAtMentions(t *testing.T) {
 }
 
 func TestHandleInboundEventDirectAlwaysProcesses(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "manager",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "manager")
 
 	ch.handleInboundEvent(eventPayload{
 		MessageID: "msg-1",
@@ -168,35 +186,12 @@ func TestHandleInboundEventDirectAlwaysProcesses(t *testing.T) {
 		Text: "hello",
 	})
 
-	select {
-	case msg := <-mb.InboundChan():
-		if msg.ChatID != "room-1" {
-			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, "room-1")
-		}
-		if msg.Content != "hello" {
-			t.Fatalf("inbound content = %q, want %q", msg.Content, "hello")
-		}
-	case <-time.After(50 * time.Millisecond):
-		t.Fatal("timed out waiting for inbound message")
-	}
+	assertInboundMessage(t, mb, "room-1", "hello")
 }
 
 func TestHandleInboundEventGroupIgnoresNonBotMention(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "manager",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "manager")
 
 	ch.handleInboundEvent(eventPayload{
 		MessageID: "msg-1",
@@ -208,29 +203,12 @@ func TestHandleInboundEventGroupIgnoresNonBotMention(t *testing.T) {
 		Text: `<at user_id="alice">alice</at> hello`,
 	})
 
-	select {
-	case msg := <-mb.InboundChan():
-		t.Fatalf("unexpected inbound message published: %+v", msg)
-	case <-time.After(50 * time.Millisecond):
-	}
+	assertNoInboundMessage(t, mb)
 }
 
 func TestHandleInboundEventGroupProcessesBotMention(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "manager",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "manager")
 
 	ch.handleInboundEvent(eventPayload{
 		MessageID: "msg-1",
@@ -242,35 +220,12 @@ func TestHandleInboundEventGroupProcessesBotMention(t *testing.T) {
 		Text: `<at user_id="manager">manager</at> hi`,
 	})
 
-	select {
-	case msg := <-mb.InboundChan():
-		if msg.ChatID != "room-1" {
-			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, "room-1")
-		}
-		if msg.Content != `@manager hi` {
-			t.Fatalf("inbound content = %q, want %q", msg.Content, `@manager hi`)
-		}
-	case <-time.After(50 * time.Millisecond):
-		t.Fatal("timed out waiting for inbound message")
-	}
+	assertInboundMessage(t, mb, "room-1", `@manager hi`)
 }
 
 func TestHandleInboundEventGroupProcessesCanonicalParticipantMentionWhenConfigUsesAgentID(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "u-agent-hhtz4b",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "u-agent-hhtz4b")
 
 	ch.handleInboundEvent(eventPayload{
 		MessageID: "msg-1",
@@ -283,37 +238,22 @@ func TestHandleInboundEventGroupProcessesCanonicalParticipantMentionWhenConfigUs
 		Context: eventContext{Account: "agent-hhtz4b"},
 	})
 
-	select {
-	case msg := <-mb.InboundChan():
-		if msg.ChatID != "room-1" {
-			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, "room-1")
-		}
-		if msg.Content != `@qa hi` {
-			t.Fatalf("inbound content = %q, want %q", msg.Content, `@qa hi`)
-		}
-	case <-time.After(50 * time.Millisecond):
-		t.Fatal("timed out waiting for inbound message")
-	}
+	assertInboundMessage(t, mb, "room-1", `@qa hi`)
 }
 
 func TestHandleInboundEventThreadUsesTopicChatID(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "manager")
 
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "manager",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
-
-	ch.dispatchEvent("message", `{"message_id":"msg-reply","room_id":"room-1","chat_type":"group","thread_root_id":"msg-root","sender":{"id":"user-1"},"text":"<at user_id=\"manager\">manager</at> hi","context":{"topic_id":"msg-root"}}`)
+	dispatchTestMessage(t, ch, eventPayload{
+		MessageID:    "msg-reply",
+		RoomID:       "room-1",
+		ChatType:     "group",
+		ThreadRootID: "msg-root",
+		Sender:       sender{ID: "user-1"},
+		Text:         `<at user_id="manager">manager</at> hi`,
+		Context:      eventContext{TopicID: "msg-root"},
+	})
 
 	select {
 	case msg := <-mb.InboundChan():
@@ -403,21 +343,8 @@ func TestSendThreadMessageIncludesTopicContext(t *testing.T) {
 }
 
 func TestHandleInboundEventConsumesRoomIDPayload(t *testing.T) {
-	mb := bus.NewMessageBus()
-	defer mb.Close()
-
-	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:       "http://127.0.0.1:18080",
-		ParticipantID: "manager",
-		AccessToken:   "secret",
-	}, mb)
-	if err != nil {
-		t.Fatalf("NewChannel() error = %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	ch.ctx = ctx
+	mb := newTestMessageBus(t)
+	ch := newTestChannel(t, mb, "manager")
 
 	ch.handleInboundEvent(eventPayload{
 		MessageID: "msg-1",
@@ -429,16 +356,71 @@ func TestHandleInboundEventConsumesRoomIDPayload(t *testing.T) {
 		Text: "hi",
 	})
 
+	assertInboundMessage(t, mb, "room-1", "hi")
+}
+
+func newTestMessageBus(t *testing.T) *bus.MessageBus {
+	t.Helper()
+
+	mb := bus.NewMessageBus()
+	t.Cleanup(mb.Close)
+
+	return mb
+}
+
+func newTestChannel(t *testing.T, mb *bus.MessageBus, participantID string) *Channel {
+	t.Helper()
+
+	ch, err := NewChannel(config.CSGClawConfig{
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: participantID,
+		AccessToken:   "secret",
+	}, mb)
+	if err != nil {
+		t.Fatalf("NewChannel() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	ch.ctx = ctx
+
+	return ch
+}
+
+func dispatchTestMessage(t *testing.T, ch *Channel, evt eventPayload) {
+	t.Helper()
+
+	raw, err := json.Marshal(evt)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+
+	ch.dispatchEvent("message", string(raw))
+}
+
+func assertInboundMessage(t *testing.T, mb *bus.MessageBus, wantChatID, wantContent string) {
+	t.Helper()
+
 	select {
 	case msg := <-mb.InboundChan():
-		if msg.ChatID != "room-1" {
-			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, "room-1")
+		if msg.ChatID != wantChatID {
+			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, wantChatID)
 		}
-		if msg.Content != "hi" {
-			t.Fatalf("inbound content = %q, want %q", msg.Content, "hi")
+		if msg.Content != wantContent {
+			t.Fatalf("inbound content = %q, want %q", msg.Content, wantContent)
 		}
 	case <-time.After(50 * time.Millisecond):
 		t.Fatal("timed out waiting for inbound message")
+	}
+}
+
+func assertNoInboundMessage(t *testing.T, mb *bus.MessageBus) {
+	t.Helper()
+
+	select {
+	case msg := <-mb.InboundChan():
+		t.Fatalf("unexpected inbound message published: %+v", msg)
+	case <-time.After(50 * time.Millisecond):
 	}
 }
 

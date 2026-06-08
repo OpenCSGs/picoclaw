@@ -75,7 +75,11 @@ type feishuSSEMessage struct {
 	Mentions  []string `json:"mentions"`
 }
 
-func NewFeishuChannel(cfg config.FeishuConfig, csgclawCfg config.CSGClawConfig, bus *bus.MessageBus) (*FeishuChannel, error) {
+func NewFeishuChannel(
+	cfg config.FeishuConfig,
+	csgclawCfg config.CSGClawConfig,
+	bus *bus.MessageBus,
+) (*FeishuChannel, error) {
 	base := channels.NewBaseChannel("feishu", cfg, bus, cfg.AllowFrom,
 		channels.WithGroupTrigger(cfg.GroupTrigger),
 		channels.WithReasoningChannelID(cfg.ReasoningChannelID),
@@ -147,7 +151,10 @@ func (c *FeishuChannel) Start(ctx context.Context) error {
 			"participant_id": c.csgclawConfig.ParticipantID,
 		})
 	} else if c.hasPartialCSGClawSSEConfig() {
-		logger.WarnC("feishu", "Feishu CSGClaw SSE listener disabled because base_url, participant_id, or access_token is missing")
+		logger.WarnC(
+			"feishu",
+			"Feishu CSGClaw SSE listener disabled because base_url, participant_id, or access_token is missing",
+		)
 	}
 
 	return nil
