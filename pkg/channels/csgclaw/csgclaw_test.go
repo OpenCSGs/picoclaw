@@ -29,7 +29,7 @@ func TestChannelReconnectsSSEWithBackoff(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/bots/test-bot/events":
+		case "/api/v1/channels/csgclaw/participants/test-bot/events":
 			attempt := eventAttempts.Add(1)
 			if attempt == 2 || attempt == 3 {
 				http.Error(w, "service restarting", http.StatusServiceUnavailable)
@@ -46,7 +46,7 @@ func TestChannelReconnectsSSEWithBackoff(t *testing.T) {
 			_, _ = fmt.Fprintf(w, "event: message\n")
 			_, _ = fmt.Fprintf(w, "data: %s\n\n", payload)
 			flusher.Flush()
-		case "/api/bots/test-bot/messages/send":
+		case "/api/v1/channels/csgclaw/participants/test-bot/messages":
 			w.WriteHeader(http.StatusOK)
 		default:
 			http.NotFound(w, r)
@@ -58,9 +58,9 @@ func TestChannelReconnectsSSEWithBackoff(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     server.URL,
-		BotID:       "test-bot",
-		AccessToken: "secret",
+		BaseURL:       server.URL,
+		ParticipantID: "test-bot",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -101,12 +101,12 @@ func TestHasInboundBotAtMention(t *testing.T) {
 		content string
 		ok      bool
 	}{
-		{name: "matching at tag", botID: "u-manager", content: `<at user_id="u-manager">manager</at> hello`, ok: true},
-		{name: "other at tag ignored", botID: "u-manager", content: `<at user_id="alice">alice</at> hello`, ok: false},
-		{name: "later matching at tag works", botID: "u-manager", content: `<at user_id="alice">alice</at> <at user_id="u-manager">manager</at> hello`, ok: true},
-		{name: "plain at text ignored", botID: "u-manager", content: "@manager hello", ok: false},
-		{name: "missing quote ignored", botID: "u-manager", content: `<at user_id="u-manager>manager</at>`, ok: false},
-		{name: "empty content ignored", botID: "u-manager", content: "", ok: false},
+		{name: "matching at tag", botID: "manager", content: `<at user_id="manager">manager</at> hello`, ok: true},
+		{name: "other at tag ignored", botID: "manager", content: `<at user_id="alice">alice</at> hello`, ok: false},
+		{name: "later matching at tag works", botID: "manager", content: `<at user_id="alice">alice</at> <at user_id="manager">manager</at> hello`, ok: true},
+		{name: "plain at text ignored", botID: "manager", content: "@manager hello", ok: false},
+		{name: "missing quote ignored", botID: "manager", content: `<at user_id="manager>manager</at>`, ok: false},
+		{name: "empty content ignored", botID: "manager", content: "", ok: false},
 	}
 
 	for _, tt := range tests {
@@ -125,10 +125,10 @@ func TestNormalizeInboundAtMentions(t *testing.T) {
 		content string
 		want    string
 	}{
-		{name: "single mention", content: `<at user_id="u-manager">manager</at> hi`, want: `@manager hi`},
-		{name: "multiple mentions", content: `<at user_id="alice">alice</at> hi <at user_id="u-manager">manager</at>`, want: `@alice hi @manager`},
-		{name: "empty mention name keeps original tag", content: `<at user_id="u-manager"></at> hi`, want: `<at user_id="u-manager"></at> hi`},
-		{name: "broken tag keeps tail", content: `<at user_id="u-manager">manager hi`, want: `<at user_id="u-manager">manager hi`},
+		{name: "single mention", content: `<at user_id="manager">manager</at> hi`, want: `@manager hi`},
+		{name: "multiple mentions", content: `<at user_id="alice">alice</at> hi <at user_id="manager">manager</at>`, want: `@alice hi @manager`},
+		{name: "empty mention name keeps original tag", content: `<at user_id="manager"></at> hi`, want: `<at user_id="manager"></at> hi`},
+		{name: "broken tag keeps tail", content: `<at user_id="manager">manager hi`, want: `<at user_id="manager">manager hi`},
 	}
 
 	for _, tt := range tests {
@@ -146,9 +146,9 @@ func TestHandleInboundEventDirectAlwaysProcesses(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     "http://127.0.0.1:18080",
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "manager",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -186,9 +186,9 @@ func TestHandleInboundEventGroupIgnoresNonBotMention(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     "http://127.0.0.1:18080",
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "manager",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -220,9 +220,9 @@ func TestHandleInboundEventGroupProcessesBotMention(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     "http://127.0.0.1:18080",
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "manager",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -239,7 +239,7 @@ func TestHandleInboundEventGroupProcessesBotMention(t *testing.T) {
 		Sender: sender{
 			ID: "user-1",
 		},
-		Text: `<at user_id="u-manager">manager</at> hi`,
+		Text: `<at user_id="manager">manager</at> hi`,
 	})
 
 	select {
@@ -255,14 +255,14 @@ func TestHandleInboundEventGroupProcessesBotMention(t *testing.T) {
 	}
 }
 
-func TestHandleInboundEventThreadUsesTopicChatID(t *testing.T) {
+func TestHandleInboundEventGroupProcessesCanonicalParticipantMentionWhenConfigUsesAgentID(t *testing.T) {
 	mb := bus.NewMessageBus()
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     "http://127.0.0.1:18080",
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "u-agent-hhtz4b",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -272,7 +272,48 @@ func TestHandleInboundEventThreadUsesTopicChatID(t *testing.T) {
 	defer cancel()
 	ch.ctx = ctx
 
-	ch.dispatchEvent("message", `{"message_id":"msg-reply","room_id":"room-1","chat_type":"group","thread_root_id":"msg-root","sender":{"id":"user-1"},"text":"<at user_id=\"u-manager\">manager</at> hi","context":{"topic_id":"msg-root"}}`)
+	ch.handleInboundEvent(eventPayload{
+		MessageID: "msg-1",
+		RoomID:    "room-1",
+		ChatType:  "group",
+		Sender: sender{
+			ID: "user-1",
+		},
+		Text:    `<at user_id="agent-hhtz4b">qa</at> hi`,
+		Context: eventContext{Account: "agent-hhtz4b"},
+	})
+
+	select {
+	case msg := <-mb.InboundChan():
+		if msg.ChatID != "room-1" {
+			t.Fatalf("inbound chat ID = %q, want %q", msg.ChatID, "room-1")
+		}
+		if msg.Content != `@qa hi` {
+			t.Fatalf("inbound content = %q, want %q", msg.Content, `@qa hi`)
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("timed out waiting for inbound message")
+	}
+}
+
+func TestHandleInboundEventThreadUsesTopicChatID(t *testing.T) {
+	mb := bus.NewMessageBus()
+	defer mb.Close()
+
+	ch, err := NewChannel(config.CSGClawConfig{
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "manager",
+		AccessToken:   "secret",
+	}, mb)
+	if err != nil {
+		t.Fatalf("NewChannel() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch.ctx = ctx
+
+	ch.dispatchEvent("message", `{"message_id":"msg-reply","room_id":"room-1","chat_type":"group","thread_root_id":"msg-root","sender":{"id":"user-1"},"text":"<at user_id=\"manager\">manager</at> hi","context":{"topic_id":"msg-root"}}`)
 
 	select {
 	case msg := <-mb.InboundChan():
@@ -305,7 +346,7 @@ func TestHandleInboundEventThreadUsesTopicChatID(t *testing.T) {
 func TestSendThreadMessageIncludesTopicContext(t *testing.T) {
 	var got map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/bots/u-manager/messages/send" {
+		if r.URL.Path != "/api/v1/channels/csgclaw/participants/manager/messages" {
 			http.NotFound(w, r)
 			return
 		}
@@ -324,9 +365,9 @@ func TestSendThreadMessageIncludesTopicContext(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     server.URL,
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       server.URL,
+		ParticipantID: "manager",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)
@@ -366,9 +407,9 @@ func TestHandleInboundEventConsumesRoomIDPayload(t *testing.T) {
 	defer mb.Close()
 
 	ch, err := NewChannel(config.CSGClawConfig{
-		BaseURL:     "http://127.0.0.1:18080",
-		BotID:       "u-manager",
-		AccessToken: "secret",
+		BaseURL:       "http://127.0.0.1:18080",
+		ParticipantID: "manager",
+		AccessToken:   "secret",
 	}, mb)
 	if err != nil {
 		t.Fatalf("NewChannel() error = %v", err)

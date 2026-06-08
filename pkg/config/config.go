@@ -433,7 +433,7 @@ type TelegramConfig struct {
 type CSGClawConfig struct {
 	Enabled            bool                `json:"enabled"              env:"PICOCLAW_CHANNELS_CSGCLAW_ENABLED"`
 	BaseURL            string              `json:"base_url"             env:"PICOCLAW_CHANNELS_CSGCLAW_BASE_URL"`
-	BotID              string              `json:"bot_id"               env:"PICOCLAW_CHANNELS_CSGCLAW_BOT_ID"`
+	ParticipantID      string              `json:"participant_id"        env:"PICOCLAW_CHANNELS_CSGCLAW_PARTICIPANT_ID"`
 	AccessToken        string              `json:"access_token"         env:"PICOCLAW_CHANNELS_CSGCLAW_ACCESS_TOKEN"`
 	AllowFrom          FlexibleStringSlice `json:"allow_from"           env:"PICOCLAW_CHANNELS_CSGCLAW_ALLOW_FROM"`
 	GroupTrigger       GroupTriggerConfig  `json:"group_trigger,omitempty"`
