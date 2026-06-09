@@ -7,7 +7,7 @@ export DOCKER_BUILDKIT=1
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 ACR_REGISTRY="${ACR_REGISTRY:-opencsg-registry.cn-beijing.cr.aliyuncs.com}"
-DOCKER_IMAGE="${DOCKER_IMAGE:-${ACR_REGISTRY}/opencsghq/picoclaw}"
+DOCKER_IMAGE="${DOCKER_IMAGE:-${ACR_REGISTRY}/opencsghq/picoclaw-glab}"
 DOCKER_PLATFORMS="${DOCKER_PLATFORMS:-linux/amd64,linux/arm64}"
 
 # Tag: YYYY.M.D.0 (same as deployed tags like 2026.4.29.0)
@@ -56,7 +56,7 @@ trap cleanup EXIT
 docker buildx build \
   --platform "${DOCKER_PLATFORMS}" \
   -f docker/Dockerfile \
-  --build-arg "RUNTIME_BASE=${RUNTIME_BASE:-alpine:3.23}" \
+  --build-arg "RUNTIME_ALPINE_BASE_IMAGE=${RUNTIME_ALPINE_BASE_IMAGE:-opencsg-registry.cn-beijing.cr.aliyuncs.com/opencsghq/alpine:3.23}" \
   -t "${DOCKER_IMAGE}:${IMAGE_TAG}" \
   --provenance=false \
   --sbom=false \
