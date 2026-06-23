@@ -24,7 +24,6 @@ DOCKER_PLATFORMS?=linux/amd64,linux/arm64
 GHCR_OWNER?=russellluo
 GHCR_IMAGE_NAME?=picoclaw
 GHCR_IMAGE?=ghcr.io/$(GHCR_OWNER)/$(GHCR_IMAGE_NAME):$(DOCKER_IMAGE_TAG)
-DOCKER_CSGCLAW_CLI_ARCHES?=amd64 arm64
 
 # Go variables
 GO?=CGO_ENABLED=0 go
@@ -310,13 +309,6 @@ docker-image-push-ghcr:
 		echo "Example: make docker-image-push-ghcr GHCR_OWNER=<github-user-or-org>"; \
 		exit 1; \
 	fi
-	@for arch in $(DOCKER_CSGCLAW_CLI_ARCHES); do \
-		file="$(DOCKER_BUILD_CONTEXT)/docker/csgclaw-cli/csgclaw-cli_linux_$$arch"; \
-		if [ ! -f "$$file" ]; then \
-			echo "Error: missing $$file"; \
-			exit 1; \
-		fi; \
-	done
 	@echo "Building and pushing Docker image to GHCR: $(GHCR_IMAGE)"
 	@echo "Target platforms: $(DOCKER_PLATFORMS)"
 	@echo "Make sure you have logged in first: echo <TOKEN> | docker login ghcr.io -u <USER> --password-stdin"

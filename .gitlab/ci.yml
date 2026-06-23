@@ -104,7 +104,6 @@ docker-build-push:
           test \"\$(uname -m)\" = \"${expected_arch}\"
           /sbin/tini --version >/dev/null
           /usr/local/bin/picoclaw version >/dev/null
-          /usr/local/bin/csgclaw-cli --help >/dev/null
         "
       done
   after_script:
